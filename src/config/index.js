@@ -1,0 +1,22 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
+export default {
+  env: process.env.NODE_ENV || 'development',
+  port: process.env.PORT || 3000,
+  mongoUri: process.env.MONGO_URI,
+  jwtSecret: process.env.JWT_SECRET,
+  corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+
+  // Privy
+  privyAppId: process.env.PRIVY_APP_ID,
+  privyAppSecret: process.env.PRIVY_APP_SECRET,
+  privyAuthorizationPrivateKey: process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY,
+
+  // Dashboard API Key
+  dashboardApiKey: process.env.DASHBOARD_API_KEY,
+
+  // RPC
+  ethereumRpcUrl: process.env.ETHEREUM_RPC_URL || 'https://eth.llamarpc.com',
+  arbitrumRpcUrl: process.env.ARBITRUM_RPC_URL || 'https://arb1.arbitrum.io/rpc',
+};
