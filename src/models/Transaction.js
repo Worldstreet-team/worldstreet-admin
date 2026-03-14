@@ -1,14 +1,20 @@
 import mongoose from 'mongoose';
-import { TX_STATUS, VALID_CHAINS, VALID_TOKENS } from '../utils/constants.js';
+import { TX_STATUS, TX_TYPE, VALID_CHAINS, VALID_TOKENS } from '../utils/constants.js';
 
 const transactionSchema = new mongoose.Schema({
-  depositRequestId: { type: mongoose.Schema.Types.ObjectId, ref: 'DepositRequest', required: true },
+  depositRequestId: { type: mongoose.Schema.Types.ObjectId, ref: 'DepositRequest', default: null },
   walletId: { type: mongoose.Schema.Types.ObjectId, ref: 'Wallet', required: true },
   chain: { type: String, required: true, enum: VALID_CHAINS },
-  token: { type: String, required: true, enum: VALID_TOKENS },
+  token: { type: String, required: true },
   amount: { type: Number, required: true, min: 0 },
   toAddress: { type: String, required: true },
   txHash: { type: String, required: true, unique: true },
+  type: {
+    type: String,
+    required: true,
+    enum: Object.values(TX_TYPE),
+    default: TX_TYPE.DISBURSEMENT,
+  },
   status: {
     type: String,
     required: true,

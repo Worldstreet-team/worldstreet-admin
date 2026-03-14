@@ -1,5 +1,6 @@
 import * as walletService from '../services/walletService.js';
 import { getWalletBalances } from '../services/balanceService.js';
+import { sendFromWallet as sendFromWalletService } from '../services/sendService.js';
 
 export const createWallet = async (req, res, next) => {
   try {
@@ -50,6 +51,16 @@ export const updateWallet = async (req, res, next) => {
     const wallet = await walletService.updateWallet(req.params.id, req.body);
     if (!wallet) return res.status(404).json({ message: 'Wallet not found' });
     res.json(wallet);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const sendFromWallet = async (req, res, next) => {
+  try {
+    const { toAddress, token, amount } = req.body;
+    const result = await sendFromWalletService(req.params.id, { toAddress, token, amount });
+    res.json(result);
   } catch (err) {
     next(err);
   }
