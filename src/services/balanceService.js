@@ -3,6 +3,7 @@ import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { getAssociatedTokenAddress, getAccount } from '@solana/spl-token';
 import config from '../config/index.js';
 import { TOKENS, ERC20_TRANSFER_ABI, isEvmChain, isSolanaChain } from '../utils/constants.js';
+import { getNativeCoinPrice, toUsdValue } from './priceService.js';
 
 const evmProviders = {
   ethereum: new ethers.JsonRpcProvider(config.ethereumRpcUrl),
@@ -76,10 +77,17 @@ export const getTokenBalance = async (chain, token, address) => {
   return getEvmTokenBalance(chain, token, address);
 };
 
-export const getWalletBalances = async (chain, address, tokens = ['USDC', 'USDT']) => {
+export const getWalletBalances = async (chain, address, tokens = ['USDC', 'USDT'], { includeFiatValues = false } = {}) => {
+  const nativeBalance = await getNativeBalance(chain, address);
   const balances = {
-    native: await getNativeBalance(chain, address),
+    native: nativeBalance,
   };
+
+  if (includeFiatValues) {
+    const price = await getNativeCoinPrice(chain);
+    balances.nativeUsd = toUsdValue(nativeBalance, price);
+    balances.nativeCoinPrice = price;
+  }
 
   for (const token of tokens) {
     try {

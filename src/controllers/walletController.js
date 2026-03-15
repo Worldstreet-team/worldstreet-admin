@@ -39,7 +39,8 @@ export const getWalletBalance = async (req, res, next) => {
   try {
     const wallet = await walletService.getWalletById(req.params.id);
     if (!wallet) return res.status(404).json({ message: 'Wallet not found' });
-    const balances = await getWalletBalances(wallet.chain, wallet.address, wallet.tokens);
+    const includeFiatValues = req.query.includeFiatValues === 'true';
+    const balances = await getWalletBalances(wallet.chain, wallet.address, wallet.tokens, { includeFiatValues });
     res.json({ walletId: wallet._id, address: wallet.address, chain: wallet.chain, balances });
   } catch (err) {
     next(err);

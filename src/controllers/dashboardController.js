@@ -6,12 +6,13 @@ import { DEPOSIT_STATUS } from '../utils/constants.js';
 
 export const getOverview = async (req, res, next) => {
   try {
+    const includeFiatValues = req.query.includeFiatValues === 'true';
     // Wallet balances
     const wallets = await Wallet.find({ isActive: true });
     const walletBalances = await Promise.all(
       wallets.map(async (w) => {
         try {
-          const balances = await getWalletBalances(w.chain, w.address, w.tokens);
+          const balances = await getWalletBalances(w.chain, w.address, w.tokens, { includeFiatValues });
           return {
             id: w._id,
             label: w.label,
