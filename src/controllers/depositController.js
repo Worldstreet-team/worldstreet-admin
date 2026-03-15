@@ -10,7 +10,7 @@ export const createDeposit = async (req, res, next) => {
   try {
     const {
       userId, userWalletAddress, walletType, chain, requestedToken, requestedAmount,
-      depositChain, depositToken, depositAmount, description,
+      depositChain, depositToken, depositAmount, depositFromAddress, description,
     } = req.body;
 
     // Find the receive wallet on the deposit chain
@@ -32,6 +32,7 @@ export const createDeposit = async (req, res, next) => {
       depositChain,
       depositToken,
       depositAmount,
+      depositFromAddress: depositFromAddress || null,
       description: description || '',
       treasuryWalletId: receiveWallet._id,
       expiresAt,

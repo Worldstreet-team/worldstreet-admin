@@ -77,10 +77,14 @@ const matchAndDisburse = async ({ fromAddress, amount, token, chain, treasuryWal
   });
 
   for (const candidate of candidates) {
+    // Match by depositFromAddress (the user's source wallet on the deposit chain).
+    // Falls back to userWalletAddress for backwards compatibility with older deposits.
+    const matchAddress = candidate.depositFromAddress || candidate.userWalletAddress;
+
     // EVM: case-insensitive address comparison via checksum normalization
     const candidateAddr = chain !== 'solana'
-      ? ethers.getAddress(candidate.userWalletAddress)
-      : candidate.userWalletAddress;
+      ? ethers.getAddress(matchAddress)
+      : matchAddress;
 
     if (candidateAddr !== normalizedFrom) continue;
     if (!amountsMatch(candidate.depositAmount, humanAmount, tokenInfo.decimals)) continue;

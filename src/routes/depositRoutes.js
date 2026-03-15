@@ -22,6 +22,9 @@ const router = express.Router();
 // External dashboard creates deposits via API key
 router.post('/', authenticateApiKey, validateBody(createDepositSchema), createDeposit);
 
+// Dashboard polls deposit status via API key
+router.get('/status/:id', authenticateApiKey, getDeposit);
+
 // Admin routes (JWT)
 router.get('/', authenticateJWT, listDeposits);
 router.get('/stats', authenticateJWT, getDepositStats);

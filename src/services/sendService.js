@@ -100,30 +100,84 @@ const sendEvmToken = async (wallet, toAddress, token, amount) => {
 
 // ── Solana helpers ───────────────────────────────────────────
 
-const sendSolanaNative = async (wallet, toAddress, amount) => {
+const MIN_SOL_FOR_FEES = 0.005; // ~5000 lamports buffer for tx fees + rent
+
+const ensureSolanaFundedAccount = async (address) => {
+  const pubkey = new PublicKey(address);
+  const balance = await solanaConnection.getBalance(pubkey);
+  if (balance === 0) {
+    throw new Error(
+      `Solana wallet ${address} has never been funded. ` +
+      `Deposit at least ${MIN_SOL_FOR_FEES} SOL to cover transaction fees before sending.`,
+    );
+  }
+  const solBalance = balance / LAMPORTS_PER_SOL;
+  if (solBalance < MIN_SOL_FOR_FEES) {
+    throw new Error(
+      `Solana wallet ${address} has only ${solBalance} SOL. ` +
+      `At least ${MIN_SOL_FOR_FEES} SOL is needed to cover transaction fees.`,
+    );
+  }
+};
+
+const MAX_BLOCKHASH_RETRIES = 3;
+
+const buildAndSendSolanaTransaction = async (wallet, buildInstructions) => {
+  await ensureSolanaFundedAccount(wallet.address);
   const fromPubkey = new PublicKey(wallet.address);
+
+  for (let attempt = 1; attempt <= MAX_BLOCKHASH_RETRIES; attempt++) {
+    const tx = new SolTransaction();
+    buildInstructions(tx, fromPubkey);
+    tx.feePayer = fromPubkey;
+    tx.recentBlockhash = (
+      await solanaConnection.getLatestBlockhash('finalized')
+    ).blockhash;
+
+    const serialized = tx.serialize({ requireAllSignatures: false }).toString('base64');
+
+    try {
+      const result = await privy.wallets().solana().signAndSendTransaction(
+        wallet.privyWalletId,
+        {
+          caip2: CHAIN_CAIP2.solana,
+          transaction: serialized,
+          authorization_context: {
+            authorization_private_keys: [authorizationPrivateKey],
+          },
+        },
+      );
+      return result;
+    } catch (err) {
+      const isBlockhashError =
+        err?.message?.includes('Blockhash not found') ||
+        err?.body?.includes?.('Blockhash not found');
+      if (isBlockhashError && attempt < MAX_BLOCKHASH_RETRIES) {
+        continue;
+      }
+      throw err;
+    }
+  }
+};
+
+const sendSolanaNative = async (wallet, toAddress, amount) => {
   const toPubkey = new PublicKey(toAddress);
   const lamports = Math.round(parseFloat(amount) * LAMPORTS_PER_SOL);
 
-  const tx = new SolTransaction().add(
-    SystemProgram.transfer({ fromPubkey, toPubkey, lamports }),
-  );
-  tx.feePayer = fromPubkey;
-  tx.recentBlockhash = (await solanaConnection.getLatestBlockhash()).blockhash;
+  // Pre-flight: ensure enough SOL for transfer + fees
+  const fromPubkey = new PublicKey(wallet.address);
+  const balance = await solanaConnection.getBalance(fromPubkey);
+  const needed = lamports + Math.round(MIN_SOL_FOR_FEES * LAMPORTS_PER_SOL);
+  if (balance < needed) {
+    throw new Error(
+      `Insufficient SOL balance. Wallet has ${(balance / LAMPORTS_PER_SOL).toFixed(6)} SOL ` +
+      `but needs ${(needed / LAMPORTS_PER_SOL).toFixed(6)} SOL (${amount} SOL + fees).`,
+    );
+  }
 
-  const serialized = tx.serialize({ requireAllSignatures: false }).toString('base64');
-
-  const result = await privy.wallets().solana().signAndSendTransaction(
-    wallet.privyWalletId,
-    {
-      caip2: CHAIN_CAIP2.solana,
-      transaction: serialized,
-      authorization_context: {
-        authorization_private_keys: [authorizationPrivateKey],
-      },
-    },
-  );
-  return result;
+  return buildAndSendSolanaTransaction(wallet, (tx, fp) => {
+    tx.add(SystemProgram.transfer({ fromPubkey: fp, toPubkey, lamports }));
+  });
 };
 
 const sendSplToken = async (wallet, toAddress, token, amount) => {
@@ -133,42 +187,49 @@ const sendSplToken = async (wallet, toAddress, token, amount) => {
   const mintAddress = tokenInfo.solana;
   if (!mintAddress) throw new Error(`Token ${token} not available on solana`);
 
-  const fromPubkey = new PublicKey(wallet.address);
   const toPubkey = new PublicKey(toAddress);
   const mintPubkey = new PublicKey(mintAddress);
+  const fromPubkey = new PublicKey(wallet.address);
 
   const fromAta = await getAssociatedTokenAddress(mintPubkey, fromPubkey);
   const toAta = await getAssociatedTokenAddress(mintPubkey, toPubkey);
 
-  const tx = new SolTransaction();
-  tx.feePayer = fromPubkey;
-  tx.recentBlockhash = (await solanaConnection.getLatestBlockhash()).blockhash;
+  const tokenAmount = Math.round(parseFloat(amount) * Math.pow(10, tokenInfo.decimals));
 
-  // Create the destination ATA if it doesn't exist
+  // Pre-flight: ensure sender's token account exists and has enough tokens
+  let senderTokenBalance;
   try {
-    await getAccount(solanaConnection, toAta);
+    const fromAccount = await getAccount(solanaConnection, fromAta);
+    senderTokenBalance = Number(fromAccount.amount);
   } catch {
-    tx.add(
-      createAssociatedTokenAccountInstruction(fromPubkey, toAta, toPubkey, mintPubkey),
+    throw new Error(
+      `Insufficient ${token} balance. Wallet ${wallet.address} has no ${token} token account. ` +
+      `Deposit ${token} before sending.`,
+    );
+  }
+  if (senderTokenBalance < tokenAmount) {
+    const have = senderTokenBalance / Math.pow(10, tokenInfo.decimals);
+    throw new Error(
+      `Insufficient ${token} balance. Wallet has ${have} ${token} but tried to send ${amount} ${token}.`,
     );
   }
 
-  const tokenAmount = Math.round(parseFloat(amount) * Math.pow(10, tokenInfo.decimals));
-  tx.add(createTransferInstruction(fromAta, toAta, fromPubkey, tokenAmount));
+  // Check if destination ATA needs to be created
+  let needsAtaCreation = false;
+  try {
+    await getAccount(solanaConnection, toAta);
+  } catch {
+    needsAtaCreation = true;
+  }
 
-  const serialized = tx.serialize({ requireAllSignatures: false }).toString('base64');
-
-  const result = await privy.wallets().solana().signAndSendTransaction(
-    wallet.privyWalletId,
-    {
-      caip2: CHAIN_CAIP2.solana,
-      transaction: serialized,
-      authorization_context: {
-        authorization_private_keys: [authorizationPrivateKey],
-      },
-    },
-  );
-  return result;
+  return buildAndSendSolanaTransaction(wallet, (tx, fromPk) => {
+    if (needsAtaCreation) {
+      tx.add(
+        createAssociatedTokenAccountInstruction(fromPk, toAta, toPubkey, mintPubkey),
+      );
+    }
+    tx.add(createTransferInstruction(fromAta, toAta, fromPk, tokenAmount));
+  });
 };
 
 // ── Public API ───────────────────────────────────────────────
