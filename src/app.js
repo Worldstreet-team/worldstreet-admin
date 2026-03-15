@@ -10,6 +10,7 @@ import transactionRoutes from './routes/transactionRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
 import { errorHandler } from './utils/errorHandler.js';
 import config from './config/index.js';
+import { startJobs } from './jobs/startJobs.js';
 
 const app = express();
 
@@ -30,7 +31,12 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use(errorHandler);
 
 // Start server
-connectDB();
-app.listen(config.port, () => {
-  console.log(`🚀 Server running on port ${config.port}`);
-});
+const start = async () => {
+  await connectDB();
+  startJobs();
+  app.listen(config.port, () => {
+    console.log(`🚀 Server running on port ${config.port}`);
+  });
+};
+
+start();

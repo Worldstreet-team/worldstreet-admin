@@ -20,4 +20,9 @@ export default {
   ethereumRpcUrl: process.env.ETHEREUM_RPC_URL || 'https://eth.llamarpc.com',
   arbitrumRpcUrl: process.env.ARBITRUM_RPC_URL || 'https://arb1.arbitrum.io/rpc',
   solanaRpcUrl: process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
+
+  // Auto-disburse polling
+  autoDisburseEnabled: process.env.AUTO_DISBURSE_ENABLED !== 'false',
+  pollIntervalSeconds: parseInt(process.env.POLL_INTERVAL_SECONDS, 10) || 30,
+  requiredConfirmationsEth: parseInt(process.env.REQUIRED_CONFIRMATIONS_ETH, 10) || 12,
 };
