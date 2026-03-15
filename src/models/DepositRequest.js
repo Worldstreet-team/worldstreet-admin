@@ -13,7 +13,7 @@ const depositRequestSchema = new mongoose.Schema({
   depositToken: { type: String, required: true, enum: VALID_TOKENS },
   depositAmount: { type: Number, required: true, min: 0 },
   depositFromAddress: { type: String, default: null },
-  depositTxHash: { type: String, default: null, unique: true, sparse: true },
+  depositTxHash: { type: String, unique: true, sparse: true },
 
   treasuryWalletId: { type: mongoose.Schema.Types.ObjectId, ref: 'Wallet', required: true },
 
