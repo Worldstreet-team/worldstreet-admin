@@ -33,6 +33,7 @@ const EVM_PROVIDERS = {
 const CHAIN_CAIP2 = {
   ethereum: CHAINS.ETHEREUM.caip2,
   arbitrum: CHAINS.ARBITRUM.caip2,
+  solana: CHAINS.SOLANA.caip2,
 };
 
 const solanaConnection = new Connection(config.solanaRpcUrl, 'confirmed');
@@ -115,6 +116,7 @@ const sendSolanaNative = async (wallet, toAddress, amount) => {
   const result = await privy.wallets().solana().signAndSendTransaction(
     wallet.privyWalletId,
     {
+      caip2: CHAIN_CAIP2.solana,
       transaction: serialized,
       authorization_context: {
         authorization_private_keys: [authorizationPrivateKey],
@@ -159,6 +161,7 @@ const sendSplToken = async (wallet, toAddress, token, amount) => {
   const result = await privy.wallets().solana().signAndSendTransaction(
     wallet.privyWalletId,
     {
+      caip2: CHAIN_CAIP2.solana,
       transaction: serialized,
       authorization_context: {
         authorization_private_keys: [authorizationPrivateKey],

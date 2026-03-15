@@ -96,6 +96,7 @@ const disburseSolana = async (disburseWallet, deposit, tokenInfo, mintAddress) =
   const result = await privy.wallets().solana().signAndSendTransaction(
     disburseWallet.privyWalletId,
     {
+      caip2: CHAINS.SOLANA.caip2,
       transaction: serialized,
       authorization_context: {
         authorization_private_keys: [authorizationPrivateKey],
