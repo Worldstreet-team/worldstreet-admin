@@ -90,17 +90,27 @@ const matchAndDisburse = async ({ fromAddress, amount, token, chain, treasuryWal
     if (!amountsMatch(candidate.depositAmount, humanAmount, tokenInfo.decimals)) continue;
 
     // Atomic status transition: only succeeds if still pending (prevents double-processing)
-    const updated = await DepositRequest.findOneAndUpdate(
-      { _id: candidate._id, status: DEPOSIT_STATUS.PENDING },
-      {
-        $set: {
-          status: DEPOSIT_STATUS.VERIFIED,
-          depositTxHash: txHash,
-          verifiedAt: new Date(),
+    let updated;
+    try {
+      updated = await DepositRequest.findOneAndUpdate(
+        { _id: candidate._id, status: DEPOSIT_STATUS.PENDING },
+        {
+          $set: {
+            status: DEPOSIT_STATUS.VERIFIED,
+            depositTxHash: txHash,
+            verifiedAt: new Date(),
+          },
         },
-      },
-      { new: true },
-    );
+        { new: true },
+      );
+    } catch (err) {
+      // Handle duplicate depositTxHash (same tx seen by a concurrent poll cycle)
+      if (err.code === 11000) {
+        console.log(`[Watcher] Duplicate txHash ${txHash} — already processed, skipping`);
+        return;
+      }
+      throw err;
+    }
 
     if (!updated) {
       // Another poll cycle or admin already processed this deposit
