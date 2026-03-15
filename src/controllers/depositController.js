@@ -9,7 +9,7 @@ import { DEPOSIT_STATUS } from '../utils/constants.js';
 export const createDeposit = async (req, res, next) => {
   try {
     const {
-      userId, userWalletAddress, chain, requestedToken, requestedAmount,
+      userId, userWalletAddress, walletType, chain, requestedToken, requestedAmount,
       depositChain, depositToken, depositAmount, description,
     } = req.body;
 
@@ -25,6 +25,7 @@ export const createDeposit = async (req, res, next) => {
     const deposit = await DepositRequest.create({
       userId,
       userWalletAddress,
+      walletType,
       chain,
       requestedToken,
       requestedAmount,
@@ -55,6 +56,7 @@ export const listDeposits = async (req, res, next) => {
     if (req.query.status) filter.status = req.query.status;
     if (req.query.userId) filter.userId = req.query.userId;
     if (req.query.chain) filter.chain = req.query.chain;
+    if (req.query.walletType) filter.walletType = req.query.walletType;
 
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));

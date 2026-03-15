@@ -34,20 +34,24 @@ export const getOverview = async (req, res, next) => {
     );
 
     // Deposit request counts by status
-    const statusCounts = await DepositRequest.aggregate([
-      { $group: { _id: '$status', count: { $sum: 1 } } },
-    ]);
-
-    const pendingCount = statusCounts.find((s) => s._id === DEPOSIT_STATUS.PENDING)?.count || 0;
-
-    // Today's disbursement volume
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
-    const todayVolume = await Transaction.aggregate([
-      { $match: { createdAt: { $gte: startOfDay } } },
-      { $group: { _id: '$token', totalAmount: { $sum: '$amount' }, count: { $sum: 1 } } },
+    const [statusCounts, volumeByWalletType, todayVolume] = await Promise.all([
+      DepositRequest.aggregate([
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ]),
+      DepositRequest.aggregate([
+        { $match: { status: DEPOSIT_STATUS.COMPLETED } },
+        { $group: { _id: '$walletType', totalAmount: { $sum: '$requestedAmount' }, count: { $sum: 1 } } },
+      ]),
+      Transaction.aggregate([
+        { $match: { createdAt: { $gte: startOfDay } } },
+        { $group: { _id: '$token', totalAmount: { $sum: '$amount' }, count: { $sum: 1 } } },
+      ]),
     ]);
+
+    const pendingCount = statusCounts.find((s) => s._id === DEPOSIT_STATUS.PENDING)?.count || 0;
 
     // Recent activity (last 10 completed/failed deposits)
     const recentActivity = await DepositRequest.find({
@@ -55,12 +59,13 @@ export const getOverview = async (req, res, next) => {
     })
       .sort({ updatedAt: -1 })
       .limit(10)
-      .select('userId requestedToken requestedAmount status updatedAt chain');
+      .select('userId requestedToken requestedAmount walletType status updatedAt chain');
 
     res.json({
       walletBalances,
       statusCounts,
       pendingCount,
+      volumeByWalletType,
       todayVolume,
       recentActivity,
     });

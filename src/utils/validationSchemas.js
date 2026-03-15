@@ -33,6 +33,7 @@ export const createDepositSchema = Joi.object({
     Joi.string().pattern(EVM_ADDRESS).messages({ 'string.pattern.base': 'Invalid EVM wallet address' }),
     Joi.string().pattern(SOLANA_ADDRESS).messages({ 'string.pattern.base': 'Invalid Solana wallet address' }),
   ).required(),
+  walletType: Joi.string().valid('spot', 'futures').required(),
   chain: Joi.string().valid('ethereum', 'arbitrum', 'solana').default('arbitrum'),
   requestedToken: Joi.string().valid('USDC', 'USDT').default('USDC'),
   requestedAmount: Joi.number().positive().required(),

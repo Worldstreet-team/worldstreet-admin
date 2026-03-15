@@ -1,10 +1,11 @@
 import mongoose from 'mongoose';
-import { DEPOSIT_STATUS, VALID_CHAINS, VALID_TOKENS } from '../utils/constants.js';
+import { DEPOSIT_STATUS, VALID_CHAINS, VALID_TOKENS, VALID_WALLET_TYPES } from '../utils/constants.js';
 
 const depositRequestSchema = new mongoose.Schema({
   userId: { type: String, required: true },
   userWalletAddress: { type: String, required: true },
   chain: { type: String, required: true, enum: VALID_CHAINS },
+  walletType: { type: String, required: true, enum: VALID_WALLET_TYPES },
   requestedToken: { type: String, required: true, enum: VALID_TOKENS },
   requestedAmount: { type: Number, required: true, min: 0 },
 
@@ -34,6 +35,7 @@ const depositRequestSchema = new mongoose.Schema({
 
 depositRequestSchema.index({ status: 1 });
 depositRequestSchema.index({ userId: 1 });
+depositRequestSchema.index({ walletType: 1 });
 depositRequestSchema.index({ createdAt: -1 });
 
 export default mongoose.model('DepositRequest', depositRequestSchema);
