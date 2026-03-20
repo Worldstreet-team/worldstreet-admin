@@ -1,11 +1,12 @@
 import privy, { authorizationPrivateKey } from '../config/privy.js';
 import Wallet from '../models/Wallet.js';
-import { CHAINS, isSolanaChain } from '../utils/constants.js';
+import { CHAINS, isSolanaChain, isTronChain } from '../utils/constants.js';
 
 const CHAIN_MAP = {
   ethereum: CHAINS.ETHEREUM,
   arbitrum: CHAINS.ARBITRUM,
   solana: CHAINS.SOLANA,
+  tron: CHAINS.TRON,
 };
 
 /**
@@ -15,7 +16,7 @@ export const createTreasuryWallet = async ({ chain, purpose, tokens, label }) =>
   const chainInfo = CHAIN_MAP[chain];
   if (!chainInfo) throw new Error(`Unsupported chain: ${chain}`);
 
-  const chainType = isSolanaChain(chain) ? 'solana' : 'ethereum';
+  const chainType = isTronChain(chain) ? 'tron' : isSolanaChain(chain) ? 'solana' : 'ethereum';
 
   // Create wallet via Privy — owned by the app's authorization key
   const privyWallet = await privy.wallets().create({

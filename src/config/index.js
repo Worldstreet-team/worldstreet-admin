@@ -20,6 +20,9 @@ export default {
   ethereumRpcUrl: process.env.ETHEREUM_RPC_URL || 'https://eth.llamarpc.com',
   arbitrumRpcUrl: process.env.ARBITRUM_RPC_URL || 'https://arb1.arbitrum.io/rpc',
   solanaRpcUrl: process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
+  tronRpcUrl: process.env.TRON_RPC_URL || 'https://api.trongrid.io',
+  tronGridUrl: process.env.TRON_GRID_URL || 'https://api.trongrid.io',
+  tronApiKey: process.env.TRON_API_KEY || '',
 
   // Auto-disburse polling
   autoDisburseEnabled: process.env.AUTO_DISBURSE_ENABLED !== 'false',

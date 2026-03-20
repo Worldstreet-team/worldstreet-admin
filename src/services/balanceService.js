@@ -1,8 +1,9 @@
 import { ethers } from 'ethers';
 import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { getAssociatedTokenAddress, getAccount } from '@solana/spl-token';
+import { TronWeb } from 'tronweb';
 import config from '../config/index.js';
-import { TOKENS, ERC20_TRANSFER_ABI, isEvmChain, isSolanaChain } from '../utils/constants.js';
+import { TOKENS, ERC20_TRANSFER_ABI, isEvmChain, isSolanaChain, isTronChain } from '../utils/constants.js';
 import { getNativeCoinPrice, toUsdValue } from './priceService.js';
 
 const evmProviders = {
@@ -11,6 +12,11 @@ const evmProviders = {
 };
 
 const solanaConnection = new Connection(config.solanaRpcUrl, 'confirmed');
+
+const tronWeb = new TronWeb({
+  fullHost: config.tronRpcUrl,
+  headers: config.tronApiKey ? { 'TRON-PRO-API-KEY': config.tronApiKey } : {},
+});
 
 // ── EVM helpers ──────────────────────────────────────────────
 
@@ -65,14 +71,61 @@ const getSplTokenBalance = async (address, token) => {
   }
 };
 
+// ── Tron helpers ─────────────────────────────────────────────
+
+const SUN_PER_TRX = 1_000_000;
+
+const getTronNativeBalance = async (address) => {
+  const balanceSun = await tronWeb.trx.getBalance(address);
+  return (balanceSun / SUN_PER_TRX).toString();
+};
+
+const getTrc20TokenBalance = async (address, token) => {
+  const tokenInfo = TOKENS[token];
+  if (!tokenInfo) throw new Error(`Unknown token: ${token}`);
+
+  const contractAddress = tokenInfo.tron;
+  if (!contractAddress) throw new Error(`Token ${token} not available on tron`);
+
+  try {
+    // Use TronGrid HTTP API — works with Alchemy and TronGrid endpoints
+    const url = `${config.tronGridUrl}/v1/accounts/${address}`;
+    const headers = config.tronApiKey ? { 'TRON-PRO-API-KEY': config.tronApiKey } : {};
+    const response = await fetch(url, { headers });
+
+    if (!response.ok) {
+      console.error(`[Balance] TronGrid account API error: ${response.status}`);
+      return '0';
+    }
+
+    const body = await response.json();
+    const trc20Balances = body.data?.[0]?.trc20 || [];
+
+    // trc20 is an array of objects like [{ "TR7NHq...": "1000000" }, ...]
+    for (const entry of trc20Balances) {
+      const rawBalance = entry[contractAddress];
+      if (rawBalance !== undefined) {
+        return (Number(rawBalance) / Math.pow(10, tokenInfo.decimals)).toString();
+      }
+    }
+
+    return '0';
+  } catch (err) {
+    console.error(`[Balance] Error fetching TRC-20 balance for ${token}:`, err.message);
+    return '0';
+  }
+};
+
 // ── Public API ───────────────────────────────────────────────
 
 export const getNativeBalance = async (chain, address) => {
+  if (isTronChain(chain)) return getTronNativeBalance(address);
   if (isSolanaChain(chain)) return getSolNativeBalance(address);
   return getEvmNativeBalance(chain, address);
 };
 
 export const getTokenBalance = async (chain, token, address) => {
+  if (isTronChain(chain)) return getTrc20TokenBalance(address, token);
   if (isSolanaChain(chain)) return getSplTokenBalance(address, token);
   return getEvmTokenBalance(chain, token, address);
 };

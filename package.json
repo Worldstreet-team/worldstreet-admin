@@ -22,6 +22,7 @@
     "joi": "^17.9.2",
     "jsonwebtoken": "^9.0.0",
     "mongoose": "^7.0.3",
-    "node-cron": "^4.2.1"
+    "node-cron": "^4.2.1",
+    "tronweb": "^6.2.2"
   }
 }

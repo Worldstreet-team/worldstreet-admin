@@ -6,6 +6,7 @@ const chainCursorSchema = new mongoose.Schema({
   chain: { type: String, required: true, enum: VALID_CHAINS },
   lastBlock: { type: Number, default: null },
   lastSignature: { type: String, default: null },
+  lastTronTimestamp: { type: Number, default: null },
 }, { timestamps: true });
 
 export default mongoose.model('ChainCursor', chainCursorSchema);

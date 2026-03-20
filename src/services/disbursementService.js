@@ -10,12 +10,13 @@ import {
   createAssociatedTokenAccountInstruction,
   getAccount,
 } from '@solana/spl-token';
+import { TronWeb } from 'tronweb';
 import privy, { authorizationPrivateKey } from '../config/privy.js';
 import config from '../config/index.js';
 import DepositRequest from '../models/DepositRequest.js';
 import Transaction from '../models/Transaction.js';
 import { findDisburseWallet } from './walletService.js';
-import { TOKENS, CHAINS, DEPOSIT_STATUS, TX_STATUS, TX_TYPE, isEvmChain, isSolanaChain } from '../utils/constants.js';
+import { TOKENS, CHAINS, DEPOSIT_STATUS, TX_STATUS, TX_TYPE, isEvmChain, isSolanaChain, isTronChain } from '../utils/constants.js';
 
 const CHAIN_CAIP2 = {
   ethereum: CHAINS.ETHEREUM.caip2,
@@ -23,6 +24,11 @@ const CHAIN_CAIP2 = {
 };
 
 const solanaConnection = new Connection(config.solanaRpcUrl, 'confirmed');
+
+const tronWeb = new TronWeb({
+  fullHost: config.tronRpcUrl,
+  headers: config.tronApiKey ? { 'TRON-PRO-API-KEY': config.tronApiKey } : {},
+});
 
 /**
  * Build an ERC-20 transfer calldata.
@@ -107,6 +113,68 @@ const disburseSolana = async (disburseWallet, deposit, tokenInfo, mintAddress) =
 };
 
 /**
+ * Sign a TRON transaction hash via Privy rawSign and recover the 65-byte signature.
+ */
+const signTronTransaction = async (wallet, txID) => {
+  const hash = txID.startsWith('0x') ? txID : `0x${txID}`;
+
+  const signResult = await privy.wallets()._rawSign(
+    wallet.privyWalletId,
+    {
+      params: { hash },
+      'privy-authorization-signature': authorizationPrivateKey,
+    },
+  );
+
+  const sig64 = (signResult.data?.signature || signResult.signature || signResult).replace(/^0x/, '');
+  const walletHex = TronWeb.address.toHex(wallet.address).toLowerCase();
+
+  for (const v of ['1b', '1c']) {
+    const sig65 = sig64 + v;
+    try {
+      const recovered = TronWeb.Trx.ecRecover(hash.replace(/^0x/, ''), `0x${sig65}`);
+      if (recovered.toLowerCase() === walletHex) {
+        return sig65;
+      }
+    } catch {
+      // try the other v
+    }
+  }
+
+  return sig64 + '1b';
+};
+
+/**
+ * Send TRC-20 tokens via Privy rawSign on TRON.
+ */
+const disburseTron = async (disburseWallet, deposit, tokenInfo, contractAddress) => {
+  const tokenAmount = Math.round(parseFloat(deposit.requestedAmount) * Math.pow(10, tokenInfo.decimals));
+  const fromHex = TronWeb.address.toHex(disburseWallet.address);
+
+  const { transaction: unsignedTx } = await tronWeb.transactionBuilder.triggerSmartContract(
+    contractAddress,
+    'transfer(address,uint256)',
+    { feeLimit: 100_000_000 },
+    [
+      { type: 'address', value: deposit.userWalletAddress },
+      { type: 'uint256', value: tokenAmount },
+    ],
+    fromHex,
+  );
+
+  const txID = unsignedTx.txID;
+  const signature = await signTronTransaction(disburseWallet, txID);
+  const signedTx = { ...unsignedTx, signature: [signature] };
+
+  const result = await tronWeb.trx.sendRawTransaction(signedTx);
+  if (!result.result && !result.txid) {
+    throw new Error(`TRON broadcast failed: ${JSON.stringify(result)}`);
+  }
+
+  return { transaction_hash: result.txid || txID };
+};
+
+/**
  * Disburse tokens to a user's spot wallet.
  * Called after a deposit is verified and approved.
  */
@@ -139,6 +207,8 @@ export const disburse = async (depositRequestId) => {
       result = await disburseEvm(disburseWallet, deposit, tokenInfo, contractAddress);
     } else if (isSolanaChain(deposit.chain)) {
       result = await disburseSolana(disburseWallet, deposit, tokenInfo, contractAddress);
+    } else if (isTronChain(deposit.chain)) {
+      result = await disburseTron(disburseWallet, deposit, tokenInfo, contractAddress);
     } else {
       throw new Error(`Unsupported chain for disbursement: ${deposit.chain}`);
     }

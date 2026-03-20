@@ -4,6 +4,7 @@ const NATIVE_COIN_IDS = {
   ethereum: 'ethereum',
   arbitrum: 'ethereum', // Arbitrum uses ETH as native
   solana: 'solana',
+  tron: 'tronix',
 };
 
 const CACHE_TTL_MS = 60_000; // 1 minute

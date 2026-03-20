@@ -1,12 +1,13 @@
 import { ethers } from 'ethers';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { getAssociatedTokenAddress } from '@solana/spl-token';
+import { TronWeb } from 'tronweb';
 import config from '../config/index.js';
 import ChainCursor from '../models/ChainCursor.js';
 import DepositRequest from '../models/DepositRequest.js';
 import Wallet from '../models/Wallet.js';
 import { disburse } from './disbursementService.js';
-import { TOKENS, DEPOSIT_STATUS } from '../utils/constants.js';
+import { TOKENS, DEPOSIT_STATUS, isTronChain, isEvmChain } from '../utils/constants.js';
 
 // ── Providers (reuse same pattern as balanceService) ────────
 const evmProviders = {
@@ -15,12 +16,18 @@ const evmProviders = {
 
 const solanaConnection = new Connection(config.solanaRpcUrl, 'confirmed');
 
+const tronWeb = new TronWeb({
+  fullHost: config.tronRpcUrl,
+  headers: config.tronApiKey ? { 'TRON-PRO-API-KEY': config.tronApiKey } : {},
+});
+
 // ERC-20 Transfer event topic
 const TRANSFER_EVENT_TOPIC = ethers.id('Transfer(address,address,uint256)');
 
 // Tokens to watch on each chain
 const EVM_WATCH_TOKENS = ['USDC', 'USDT'];
 const SOLANA_WATCH_TOKENS = ['USDC', 'USDT'];
+const TRON_WATCH_TOKENS = ['USDC', 'USDT'];
 
 // How far back to scan on first run (no existing cursor)
 const EVM_INITIAL_LOOKBACK = 1000; // ~3-4 hours on Ethereum
@@ -58,10 +65,13 @@ const matchAndDisburse = async ({ fromAddress, amount, token, chain, treasuryWal
   const tokenInfo = TOKENS[token];
   if (!tokenInfo) return;
 
-  // Normalize EVM addresses to checksummed form for comparison
-  const normalizedFrom = chain !== 'solana'
-    ? ethers.getAddress(fromAddress)
-    : fromAddress;
+  // Normalize addresses for comparison
+  let normalizedFrom;
+  if (isEvmChain(chain)) {
+    normalizedFrom = ethers.getAddress(fromAddress);
+  } else {
+    normalizedFrom = fromAddress;
+  }
 
   // Convert on-chain amount to human-readable
   const humanAmount = parseFloat(amount);
@@ -81,10 +91,13 @@ const matchAndDisburse = async ({ fromAddress, amount, token, chain, treasuryWal
     // Falls back to userWalletAddress for backwards compatibility with older deposits.
     const matchAddress = candidate.depositFromAddress || candidate.userWalletAddress;
 
-    // EVM: case-insensitive address comparison via checksum normalization
-    const candidateAddr = chain !== 'solana'
-      ? ethers.getAddress(matchAddress)
-      : matchAddress;
+    // Address comparison: EVM uses checksum normalization, others compare directly
+    let candidateAddr;
+    if (isEvmChain(chain)) {
+      candidateAddr = ethers.getAddress(matchAddress);
+    } else {
+      candidateAddr = matchAddress;
+    }
 
     if (candidateAddr !== normalizedFrom) continue;
     if (!amountsMatch(candidate.depositAmount, humanAmount, tokenInfo.decimals)) continue;
@@ -316,4 +329,90 @@ export const pollSolana = async () => {
   }
 
   console.log('[Watcher] SOL poll complete');
+};
+
+// ── TRON Polling ────────────────────────────────────────────
+
+/**
+ * Map TRC-20 contract addresses back to our token symbols.
+ */
+const TRON_CONTRACT_TO_TOKEN = {};
+for (const token of TRON_WATCH_TOKENS) {
+  const addr = TOKENS[token]?.tron;
+  if (addr) TRON_CONTRACT_TO_TOKEN[addr] = token;
+}
+
+export const pollTron = async () => {
+  const receiveWallets = await Wallet.find({
+    chain: 'tron',
+    purpose: 'receive',
+    isActive: true,
+  });
+
+  if (receiveWallets.length === 0) return;
+
+  for (const wallet of receiveWallets) {
+    const cursor = await getOrCreateCursor(wallet);
+
+    // Use fingerprint (unique tx id returned by TronGrid) to avoid re-processing
+    const minTimestamp = cursor.lastTronTimestamp || (Date.now() - 30 * 60 * 1000); // default: 30 min lookback
+
+    try {
+      // TronGrid TRC-20 transaction history endpoint
+      const url = `${config.tronGridUrl}/v1/accounts/${wallet.address}/transactions/trc20`
+        + `?min_timestamp=${minTimestamp}`
+        + `&limit=200`
+        + `&order_by=block_timestamp,asc`;
+
+      const headers = config.tronApiKey ? { 'TRON-PRO-API-KEY': config.tronApiKey } : {};
+      const response = await fetch(url, { headers });
+      if (!response.ok) {
+        console.error(`[Watcher] TronGrid API error: ${response.status}`);
+        continue;
+      }
+
+      const body = await response.json();
+      const transfers = body.data || [];
+
+      let latestTimestamp = minTimestamp;
+
+      for (const transfer of transfers) {
+        // Only process incoming transfers to our wallet
+        if (transfer.to !== wallet.address) continue;
+
+        const contractAddr = transfer.token_info?.address;
+        const token = TRON_CONTRACT_TO_TOKEN[contractAddr];
+        if (!token) continue;
+
+        const tokenInfo = TOKENS[token];
+        const decimals = transfer.token_info?.decimals || tokenInfo.decimals;
+        const rawAmount = parseFloat(transfer.value) / Math.pow(10, decimals);
+        const txHash = transfer.transaction_id;
+
+        await matchAndDisburse({
+          fromAddress: transfer.from,
+          amount: rawAmount,
+          token,
+          chain: 'tron',
+          treasuryWalletId: wallet._id,
+          txHash,
+        });
+
+        if (transfer.block_timestamp > latestTimestamp) {
+          latestTimestamp = transfer.block_timestamp;
+        }
+      }
+
+      // Move cursor forward (add 1ms to avoid re-fetching the last seen tx)
+      if (latestTimestamp > minTimestamp) {
+        cursor.lastTronTimestamp = latestTimestamp + 1;
+      }
+    } catch (err) {
+      console.error(`[Watcher] Error polling TRON transfers for ${wallet.address}:`, err.message);
+    }
+
+    await cursor.save();
+  }
+
+  console.log('[Watcher] TRON poll complete');
 };
