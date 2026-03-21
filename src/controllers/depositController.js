@@ -176,3 +176,79 @@ export const rejectDeposit = async (req, res, next) => {
     next(err);
   }
 };
+
+/**
+ * Dashboard notifies admin of a deposit txHash after on-chain send.
+ * This allows the admin to verify + complete without waiting for the chain watcher.
+ */
+export const notifyDepositTx = async (req, res, next) => {
+  try {
+    const { depositTxHash } = req.body;
+    if (!depositTxHash) {
+      return res.status(400).json({ message: 'depositTxHash is required' });
+    }
+
+    const deposit = await DepositRequest.findById(req.params.id);
+    if (!deposit) {
+      return res.status(404).json({ message: 'Deposit request not found' });
+    }
+
+    // If already verified/completed, just return current state
+    if ([DEPOSIT_STATUS.VERIFIED, DEPOSIT_STATUS.COMPLETED, DEPOSIT_STATUS.PROCESSING].includes(deposit.status)) {
+      return res.json(deposit);
+    }
+
+    if (deposit.status !== DEPOSIT_STATUS.PENDING) {
+      return res.status(400).json({ message: `Cannot notify: status is "${deposit.status}"` });
+    }
+
+    // Atomically transition from pending → verified (prevents double-processing)
+    let updated;
+    try {
+      updated = await DepositRequest.findOneAndUpdate(
+        { _id: deposit._id, status: DEPOSIT_STATUS.PENDING },
+        {
+          $set: {
+            status: DEPOSIT_STATUS.VERIFIED,
+            depositTxHash,
+            verifiedAt: new Date(),
+          },
+        },
+        { new: true },
+      );
+    } catch (err) {
+      if (err.code === 11000) {
+        return res.status(409).json({ message: 'This transaction hash has already been used' });
+      }
+      throw err;
+    }
+
+    if (!updated) {
+      // Race condition — watcher or another call already processed it
+      const current = await DepositRequest.findById(deposit._id);
+      return res.json(current);
+    }
+
+    // For skipDisbursement deposits (e.g. SpotV2), complete immediately
+    if (updated.skipDisbursement) {
+      await DepositRequest.findByIdAndUpdate(updated._id, {
+        $set: { status: DEPOSIT_STATUS.COMPLETED, completedAt: new Date() },
+      });
+      console.log(`[Deposit] ${updated._id} verified + completed via dashboard notify (skipDisbursement)`);
+      const completed = await DepositRequest.findById(updated._id);
+      return res.json(completed);
+    }
+
+    // For regular deposits, trigger disbursement
+    try {
+      const result = await disburse(updated._id);
+      console.log(`[Deposit] ${updated._id} verified + disbursed via dashboard notify`);
+      return res.json({ deposit: result.deposit, transaction: result.tx });
+    } catch (err) {
+      console.error(`[Deposit] Disbursement failed for ${updated._id}:`, err.message);
+      return res.status(500).json({ message: 'Deposit verified but disbursement failed' });
+    }
+  } catch (err) {
+    next(err);
+  }
+};

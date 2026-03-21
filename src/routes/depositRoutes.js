@@ -15,6 +15,7 @@ import {
   verifyDeposit,
   approveDeposit,
   rejectDeposit,
+  notifyDepositTx,
 } from '../controllers/depositController.js';
 
 const router = express.Router();
@@ -24,6 +25,9 @@ router.post('/', authenticateApiKey, validateBody(createDepositSchema), createDe
 
 // Dashboard polls deposit status via API key
 router.get('/status/:id', authenticateApiKey, getDeposit);
+
+// Dashboard notifies admin of txHash after on-chain send
+router.patch('/:id/notify-tx', authenticateApiKey, notifyDepositTx);
 
 // Admin routes (JWT)
 router.get('/', authenticateJWT, listDeposits);
