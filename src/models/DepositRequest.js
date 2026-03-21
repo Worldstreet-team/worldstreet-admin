@@ -17,6 +17,8 @@ const depositRequestSchema = new mongoose.Schema({
 
   treasuryWalletId: { type: mongoose.Schema.Types.ObjectId, ref: 'Wallet', required: true },
 
+  skipDisbursement: { type: Boolean, default: false },
+
   disburseTxHash: { type: String, default: null },
   disburseWalletId: { type: mongoose.Schema.Types.ObjectId, ref: 'Wallet', default: null },
 

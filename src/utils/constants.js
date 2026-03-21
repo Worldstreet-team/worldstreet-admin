@@ -92,6 +92,7 @@ export const VALID_WALLET_TYPES = ['spot', 'futures'];
 export const TX_TYPE = {
   DISBURSEMENT: 'disbursement',
   MANUAL_SEND: 'manual-send',
+  WITHDRAWAL: 'withdrawal',
 };
 
 // Chain type helpers

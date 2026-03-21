@@ -132,13 +132,21 @@ const matchAndDisburse = async ({ fromAddress, amount, token, chain, treasuryWal
 
     console.log(`[Watcher] Matched deposit ${updated._id} ← tx ${txHash} (${amount} ${token} on ${chain})`);
 
-    // Trigger auto-disbursement
-    try {
-      const result = await disburse(updated._id);
-      console.log(`[Watcher] Disbursed ${updated._id} → tx ${result.tx.txHash}`);
-    } catch (err) {
-      console.error(`[Watcher] Disbursement failed for ${updated._id}:`, err.message);
-      // deposit status is already set to 'failed' by disburse() on error
+    // Skip disbursement for ledger-only deposits (e.g. SpotV2)
+    if (updated.skipDisbursement) {
+      await DepositRequest.findByIdAndUpdate(updated._id, {
+        $set: { status: DEPOSIT_STATUS.COMPLETED, completedAt: new Date() },
+      });
+      console.log(`[Watcher] Deposit ${updated._id} completed (skipDisbursement=true, ledger-only)`);
+    } else {
+      // Trigger auto-disbursement
+      try {
+        const result = await disburse(updated._id);
+        console.log(`[Watcher] Disbursed ${updated._id} → tx ${result.tx.txHash}`);
+      } catch (err) {
+        console.error(`[Watcher] Disbursement failed for ${updated._id}:`, err.message);
+        // deposit status is already set to 'failed' by disburse() on error
+      }
     }
 
     // One deposit per tx hash — break after match

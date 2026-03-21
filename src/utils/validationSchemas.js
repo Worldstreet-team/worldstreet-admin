@@ -48,6 +48,7 @@ export const createDepositSchema = Joi.object({
   depositToken: Joi.string().valid('USDC', 'USDT').required(),
   depositAmount: Joi.number().positive().required(),
   description: Joi.string().max(500).optional(),
+  skipDisbursement: Joi.boolean().optional().default(false),
 });
 
 export const verifyDepositSchema = Joi.object({
@@ -57,4 +58,16 @@ export const verifyDepositSchema = Joi.object({
 
 export const rejectDepositSchema = Joi.object({
   adminNotes: Joi.string().max(500).optional(),
+});
+
+export const createWithdrawalSchema = Joi.object({
+  userId: Joi.string().required(),
+  toAddress: Joi.alternatives().try(
+    Joi.string().pattern(EVM_ADDRESS).messages({ 'string.pattern.base': 'Invalid EVM wallet address' }),
+    Joi.string().pattern(SOLANA_ADDRESS).messages({ 'string.pattern.base': 'Invalid Solana wallet address' }),
+    Joi.string().pattern(TRON_ADDRESS).messages({ 'string.pattern.base': 'Invalid TRON wallet address' }),
+  ).required(),
+  chain: Joi.string().valid('ethereum', 'arbitrum', 'solana', 'tron').required(),
+  token: Joi.string().valid('USDC', 'USDT').required(),
+  amount: Joi.number().positive().required(),
 });
