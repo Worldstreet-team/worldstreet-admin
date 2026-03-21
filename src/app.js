@@ -8,6 +8,7 @@ import walletRoutes from './routes/walletRoutes.js';
 import depositRoutes from './routes/depositRoutes.js';
 import transactionRoutes from './routes/transactionRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
+import withdrawalRoutes from './routes/withdrawalRoutes.js';
 import { errorHandler } from './utils/errorHandler.js';
 import config from './config/index.js';
 import { startJobs } from './jobs/startJobs.js';
@@ -26,6 +27,7 @@ app.use('/api/wallets', walletRoutes);
 app.use('/api/deposits', depositRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/withdrawals', withdrawalRoutes);
 
 // Error handler (must be after routes)
 app.use(errorHandler);
