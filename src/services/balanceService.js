@@ -77,6 +77,11 @@ const SUN_PER_TRX = 1_000_000;
 
 const getTronNativeBalance = async (address) => {
   const balanceSun = await tronWeb.trx.getBalance(address);
+  // TronWeb returns 0 both for an empty wallet AND for a failed/rate-limited call.
+  // Check if the result is a valid number before trusting it.
+  if (typeof balanceSun !== 'number') {
+    throw new Error(`[Balance] Unexpected TRX balance response for ${address}: ${JSON.stringify(balanceSun)}`);
+  }
   return (balanceSun / SUN_PER_TRX).toString();
 };
 
@@ -94,8 +99,7 @@ const getTrc20TokenBalance = async (address, token) => {
     const response = await fetch(url, { headers });
 
     if (!response.ok) {
-      console.error(`[Balance] TronGrid account API error: ${response.status}`);
-      return '0';
+      throw new Error(`[Balance] TronGrid account API error ${response.status} for ${address}`);
     }
 
     const body = await response.json();

@@ -28,4 +28,8 @@ export default {
   autoDisburseEnabled: process.env.AUTO_DISBURSE_ENABLED !== 'false',
   pollIntervalSeconds: parseInt(process.env.POLL_INTERVAL_SECONDS, 10) || 30,
   requiredConfirmationsEth: parseInt(process.env.REQUIRED_CONFIRMATIONS_ETH, 10) || 12,
+
+  // Gas sponsorship
+  gasDailyThresholdUSD: parseFloat(process.env.GAS_DAILY_THRESHOLD_USD) || 500,
+  gasAlertWebhookUrl: process.env.GAS_ALERT_WEBHOOK_URL || '',
 };

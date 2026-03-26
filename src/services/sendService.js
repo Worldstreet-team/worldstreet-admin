@@ -250,16 +250,23 @@ const sendSplToken = async (wallet, toAddress, token, amount) => {
 const signTronTransaction = async (wallet, txID) => {
   const hash = txID.startsWith('0x') ? txID : `0x${txID}`;
 
-  const signResult = await privy.wallets()._rawSign(
+  // privy.wallets() returns PrivyWalletsService which exposes rawSign() (no underscore).
+  // It takes authorization_context (not a raw header string).
+  const signResult = await privy.wallets().rawSign(
     wallet.privyWalletId,
     {
       params: { hash },
-      'privy-authorization-signature': authorizationPrivateKey,
+      authorization_context: {
+        authorization_private_keys: [authorizationPrivateKey],
+      },
     },
   );
 
-  // signResult.data.signature is 0x-prefixed 64-byte hex (r || s)
-  const sig64 = (signResult.data?.signature || signResult.signature || signResult).replace(/^0x/, '');
+  // signResult.signature is 0x-prefixed 64-byte hex (r || s)
+  const sig64 = (signResult.signature || signResult.data?.signature || '').replace(/^0x/, '');
+  if (!sig64 || sig64.length !== 128) {
+    throw new Error(`Privy rawSign returned unexpected signature: ${JSON.stringify(signResult)}`);
+  }
 
   // TRON requires 65-byte signature: r (32) + s (32) + v (1)
   // v is recovery ID: try 0x1b (27) and 0x1c (28), verify which recovers to wallet address
@@ -277,8 +284,11 @@ const signTronTransaction = async (wallet, txID) => {
     }
   }
 
-  // Fallback: use v=1b if recovery fails (may happen with some TronWeb versions)
-  return sig64 + '1b';
+  // If neither recovery ID worked, something is fundamentally wrong — fail loudly
+  throw new Error(
+    `TRON signature recovery failed for wallet ${wallet.address}. ` +
+    `Neither v=27 nor v=28 recovers the expected address.`,
+  );
 };
 
 const sendTronNative = async (wallet, toAddress, amount) => {
@@ -305,11 +315,14 @@ const sendTronNative = async (wallet, toAddress, amount) => {
 
   // Broadcast
   const result = await tronWeb.trx.sendRawTransaction(signedTx);
-  if (!result.result && !result.txid) {
+  if (!result.result) {
     throw new Error(`TRON broadcast failed: ${JSON.stringify(result)}`);
   }
+  if (!result.txid) {
+    throw new Error(`TRON broadcast succeeded but no txid returned: ${JSON.stringify(result)}`);
+  }
 
-  return { transaction_hash: result.txid || txID };
+  return { transaction_hash: result.txid };
 };
 
 const sendTrc20Token = async (wallet, toAddress, token, amount) => {
@@ -342,11 +355,14 @@ const sendTrc20Token = async (wallet, toAddress, token, amount) => {
 
   // Broadcast
   const result = await tronWeb.trx.sendRawTransaction(signedTx);
-  if (!result.result && !result.txid) {
+  if (!result.result) {
     throw new Error(`TRON broadcast failed: ${JSON.stringify(result)}`);
   }
+  if (!result.txid) {
+    throw new Error(`TRON broadcast succeeded but no txid returned: ${JSON.stringify(result)}`);
+  }
 
-  return { transaction_hash: result.txid || txID };
+  return { transaction_hash: result.txid };
 };
 
 // ── Public API ───────────────────────────────────────────────

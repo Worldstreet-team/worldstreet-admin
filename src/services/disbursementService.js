@@ -118,15 +118,24 @@ const disburseSolana = async (disburseWallet, deposit, tokenInfo, mintAddress) =
 const signTronTransaction = async (wallet, txID) => {
   const hash = txID.startsWith('0x') ? txID : `0x${txID}`;
 
-  const signResult = await privy.wallets()._rawSign(
+  // privy.wallets() returns PrivyWalletsService which exposes rawSign() (no underscore).
+  // It takes authorization_context (not a raw header string).
+  const signResult = await privy.wallets().rawSign(
     wallet.privyWalletId,
     {
       params: { hash },
-      'privy-authorization-signature': authorizationPrivateKey,
+      authorization_context: {
+        authorization_private_keys: [authorizationPrivateKey],
+      },
     },
   );
 
-  const sig64 = (signResult.data?.signature || signResult.signature || signResult).replace(/^0x/, '');
+  // signResult.signature is 0x-prefixed 64-byte hex (r || s)
+  const sig64 = (signResult.signature || signResult.data?.signature || '').replace(/^0x/, '');
+  if (!sig64 || sig64.length !== 128) {
+    throw new Error(`Privy rawSign returned unexpected signature: ${JSON.stringify(signResult)}`);
+  }
+
   const walletHex = TronWeb.address.toHex(wallet.address).toLowerCase();
 
   for (const v of ['1b', '1c']) {
@@ -141,7 +150,11 @@ const signTronTransaction = async (wallet, txID) => {
     }
   }
 
-  return sig64 + '1b';
+  // If neither recovery ID worked, something is fundamentally wrong — fail loudly
+  throw new Error(
+    `TRON signature recovery failed for wallet ${wallet.address}. ` +
+    `Neither v=27 nor v=28 recovers the expected address.`,
+  );
 };
 
 /**
@@ -167,11 +180,14 @@ const disburseTron = async (disburseWallet, deposit, tokenInfo, contractAddress)
   const signedTx = { ...unsignedTx, signature: [signature] };
 
   const result = await tronWeb.trx.sendRawTransaction(signedTx);
-  if (!result.result && !result.txid) {
+  if (!result.result) {
     throw new Error(`TRON broadcast failed: ${JSON.stringify(result)}`);
   }
+  if (!result.txid) {
+    throw new Error(`TRON broadcast succeeded but no txid returned: ${JSON.stringify(result)}`);
+  }
 
-  return { transaction_hash: result.txid || txID };
+  return { transaction_hash: result.txid };
 };
 
 /**
