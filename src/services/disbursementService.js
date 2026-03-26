@@ -136,14 +136,21 @@ const signTronTransaction = async (wallet, txID) => {
     throw new Error(`Privy rawSign returned unexpected signature: ${JSON.stringify(signResult)}`);
   }
 
-  const walletHex = TronWeb.address.toHex(wallet.address).toLowerCase();
+  // TronWeb.Trx.ecRecover expects a SignedTransaction object, not raw strings.
+  // Use ethers.recoverAddress instead — Tron hex address is '41' + EVM 20-byte hex.
+  const walletTronHex = TronWeb.address.toHex(wallet.address).toLowerCase(); // '41xxxxxxxx...'
+  const walletEvmAddr = ('0x' + walletTronHex.slice(2)).toLowerCase();
 
-  for (const v of ['1b', '1c']) {
-    const sig65 = sig64 + v;
+  for (const v of [27, 28]) {
     try {
-      const recovered = TronWeb.Trx.ecRecover(hash.replace(/^0x/, ''), `0x${sig65}`);
-      if (recovered.toLowerCase() === walletHex) {
-        return sig65;
+      const sig = ethers.Signature.from({
+        r: '0x' + sig64.slice(0, 64),
+        s: '0x' + sig64.slice(64, 128),
+        v,
+      });
+      const recovered = ethers.recoverAddress(hash, sig).toLowerCase();
+      if (recovered === walletEvmAddr) {
+        return sig64 + v.toString(16); // '1b' (27) or '1c' (28)
       }
     } catch {
       // try the other v
