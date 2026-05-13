@@ -80,13 +80,14 @@ export const WALLET_PURPOSE = {
 export const WALLET_TYPE = {
   SPOT: 'spot',
   FUTURES: 'futures',
+  ASSET: 'asset',
 };
 
 // Valid chain names
 export const VALID_CHAINS = ['ethereum', 'arbitrum', 'solana', 'tron'];
 export const VALID_TOKENS = ['USDC', 'USDT'];
 export const VALID_PURPOSES = ['receive', 'disburse', 'fees'];
-export const VALID_WALLET_TYPES = ['spot', 'futures'];
+export const VALID_WALLET_TYPES = ['spot', 'futures', 'asset'];
 
 // Transaction types
 export const TX_TYPE = {

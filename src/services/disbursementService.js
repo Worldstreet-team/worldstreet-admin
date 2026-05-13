@@ -202,41 +202,55 @@ const disburseTron = async (disburseWallet, deposit, tokenInfo, contractAddress)
  * Called after a deposit is verified and approved.
  */
 export const disburse = async (depositRequestId) => {
-  const deposit = await DepositRequest.findById(depositRequestId);
-  if (!deposit) throw new Error('Deposit request not found');
-  if (deposit.status !== DEPOSIT_STATUS.VERIFIED) {
-    throw new Error(`Cannot disburse: deposit status is "${deposit.status}", expected "verified"`);
+  const deposit = await DepositRequest.findOneAndUpdate(
+    { _id: depositRequestId, status: DEPOSIT_STATUS.VERIFIED },
+    { $set: { status: DEPOSIT_STATUS.PROCESSING } },
+    { new: true },
+  );
+
+  if (!deposit) {
+    const current = await DepositRequest.findById(depositRequestId);
+    if (!current) throw new Error('Deposit request not found');
+    throw new Error(`Cannot disburse: deposit status is "${current.status}", expected "verified"`);
   }
 
-  // Find the disburse wallet for the target chain
-  const disburseWallet = await findDisburseWallet(deposit.chain);
-  if (!disburseWallet) throw new Error(`No active disburse wallet for chain: ${deposit.chain}`);
-
-  const tokenInfo = TOKENS[deposit.requestedToken];
-  if (!tokenInfo) throw new Error(`Unknown token: ${deposit.requestedToken}`);
-
-  const contractAddress = tokenInfo[deposit.chain];
-  if (!contractAddress) throw new Error(`Token ${deposit.requestedToken} not on ${deposit.chain}`);
-
-  // Mark as processing
-  deposit.status = DEPOSIT_STATUS.PROCESSING;
-  deposit.disburseWalletId = disburseWallet._id;
-  await deposit.save();
+  let broadcastAttempted = false;
 
   try {
+    // Find the disburse wallet for the target chain
+    const disburseWallet = await findDisburseWallet(deposit.chain);
+    if (!disburseWallet) throw new Error(`No active disburse wallet for chain: ${deposit.chain}`);
+
+    const tokenInfo = TOKENS[deposit.requestedToken];
+    if (!tokenInfo) throw new Error(`Unknown token: ${deposit.requestedToken}`);
+
+    const contractAddress = tokenInfo[deposit.chain];
+    if (!contractAddress) throw new Error(`Token ${deposit.requestedToken} not on ${deposit.chain}`);
+
+    deposit.disburseWalletId = disburseWallet._id;
+    await deposit.save();
+
     // Send via Privy — branch by chain type
     let result;
     if (isEvmChain(deposit.chain)) {
+      broadcastAttempted = true;
       result = await disburseEvm(disburseWallet, deposit, tokenInfo, contractAddress);
     } else if (isSolanaChain(deposit.chain)) {
+      broadcastAttempted = true;
       result = await disburseSolana(disburseWallet, deposit, tokenInfo, contractAddress);
     } else if (isTronChain(deposit.chain)) {
+      broadcastAttempted = true;
       result = await disburseTron(disburseWallet, deposit, tokenInfo, contractAddress);
     } else {
       throw new Error(`Unsupported chain for disbursement: ${deposit.chain}`);
     }
 
     const txHash = result.hash || result.signature || result.transaction_hash;
+    if (!txHash) {
+      const hashError = new Error(`Disbursement response missing transaction hash: ${JSON.stringify(result)}`);
+      hashError.broadcastAttempted = broadcastAttempted;
+      throw hashError;
+    }
 
     // Record the transaction
     const tx = await Transaction.create({
@@ -259,6 +273,9 @@ export const disburse = async (depositRequestId) => {
 
     return { deposit, tx };
   } catch (err) {
+    if (broadcastAttempted && typeof err === 'object' && err !== null) {
+      err.broadcastAttempted = true;
+    }
     deposit.status = DEPOSIT_STATUS.FAILED;
     deposit.adminNotes = `Disbursement failed: ${err.message}`;
     await deposit.save();

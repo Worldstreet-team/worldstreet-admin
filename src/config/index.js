@@ -15,6 +15,8 @@ export default {
 
   // Dashboard API Key
   dashboardApiKey: process.env.DASHBOARD_API_KEY,
+  dashboardCallbackUrl: process.env.DASHBOARD_CALLBACK_URL || '',
+  dashboardWebhookSecret: process.env.DASHBOARD_WEBHOOK_SECRET || '',
 
   // RPC
   ethereumRpcUrl: process.env.ETHEREUM_RPC_URL || 'https://eth.llamarpc.com',

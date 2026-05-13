@@ -1,10 +1,12 @@
 import cron from 'node-cron';
 import config from '../config/index.js';
 import { pollEthereum, pollSolana, pollTron } from '../services/depositWatcherService.js';
+import { expireFiatReservations } from '../services/fiatDepositService.js';
 
 let ethPolling = false;
 let solPolling = false;
 let tronPolling = false;
+let fiatExpiryRunning = false;
 
 const runEthPoll = async () => {
   if (ethPolling) return;
@@ -42,7 +44,22 @@ const runTronPoll = async () => {
   }
 };
 
+const runFiatReservationExpiry = async () => {
+  if (fiatExpiryRunning) return;
+  fiatExpiryRunning = true;
+  try {
+    const count = await expireFiatReservations();
+    if (count > 0) console.log(`[Jobs] Expired ${count} fiat deposit reservation(s)`);
+  } catch (err) {
+    console.error('[Jobs] Fiat reservation expiry error:', err.message);
+  } finally {
+    fiatExpiryRunning = false;
+  }
+};
+
 export const startJobs = () => {
+  cron.schedule('* * * * *', runFiatReservationExpiry);
+
   if (!config.autoDisburseEnabled) {
     console.log('[Jobs] Auto-disburse is disabled (AUTO_DISBURSE_ENABLED=false)');
     return;

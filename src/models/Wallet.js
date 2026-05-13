@@ -8,6 +8,10 @@ const walletSchema = new mongoose.Schema({
   chainId: { type: String, required: true },
   purpose: { type: String, required: true, enum: VALID_PURPOSES },
   tokens: [{ type: String, enum: VALID_TOKENS }],
+  reserved: {
+    USDC: { type: Number, default: 0, min: 0 },
+    USDT: { type: Number, default: 0, min: 0 },
+  },
   label: { type: String, default: '' },
   isActive: { type: Boolean, default: true },
 }, { timestamps: true });

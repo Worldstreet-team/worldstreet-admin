@@ -2,6 +2,12 @@ import DepositRequest from '../models/DepositRequest.js';
 import { findReceiveWallet } from '../services/walletService.js';
 import { disburse } from '../services/disbursementService.js';
 import { DEPOSIT_STATUS } from '../utils/constants.js';
+import {
+  cancelFiatDeposit,
+  executeFiatDeposit,
+  getFiatAvailability,
+  reserveFiatDeposit,
+} from '../services/fiatDepositService.js';
 
 /**
  * Create a deposit request (called from external dashboard via API key).
@@ -45,6 +51,54 @@ export const createDeposit = async (req, res, next) => {
       treasuryAddress: receiveWallet.address,
       treasuryChain: receiveWallet.chain,
     });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const getFiatDepositAvailability = async (req, res, next) => {
+  try {
+    const availability = await getFiatAvailability(req.query.token || 'USDT');
+    res.json(availability);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const reserveFiatDepositRequest = async (req, res, next) => {
+  try {
+    const { deposit, adminDepositId, reservationExpiresAt } = await reserveFiatDeposit(req.body);
+    res.status(201).json({
+      success: true,
+      adminDepositId,
+      reservationExpiresAt,
+      deposit,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const executeFiatDepositRequest = async (req, res, next) => {
+  try {
+    const result = await executeFiatDeposit(req.body);
+    res.json({
+      success: true,
+      accepted: result.accepted,
+      status: result.status,
+      adminDepositId: String(result.deposit._id),
+      txHash: result.txHash || result.deposit.disburseTxHash,
+      deposit: result.deposit,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const cancelFiatDepositRequest = async (req, res, next) => {
+  try {
+    const result = await cancelFiatDeposit(req.body);
+    res.json(result);
   } catch (err) {
     next(err);
   }

@@ -40,7 +40,7 @@ export const createDepositSchema = Joi.object({
     Joi.string().pattern(SOLANA_ADDRESS),
     Joi.string().pattern(TRON_ADDRESS),
   ).optional(),
-  walletType: Joi.string().valid('spot', 'futures').required(),
+  walletType: Joi.string().valid('spot', 'futures', 'asset').required(),
   chain: Joi.string().valid('ethereum', 'arbitrum', 'solana', 'tron').default('arbitrum'),
   requestedToken: Joi.string().valid('USDC', 'USDT').default('USDC'),
   requestedAmount: Joi.number().positive().required(),
@@ -58,6 +58,33 @@ export const verifyDepositSchema = Joi.object({
 
 export const rejectDepositSchema = Joi.object({
   adminNotes: Joi.string().max(500).optional(),
+});
+
+const fiatDepositBaseSchema = {
+  source: Joi.string().valid('fiat').default('fiat'),
+  externalReference: Joi.string().pattern(/^WS-DEP-[A-Za-z0-9-]+$/).required(),
+  fiatProvider: Joi.string().valid('flutterwave').required(),
+  fiatCurrency: Joi.string().valid('NGN', 'GHS').required(),
+  fiatAmount: Joi.number().positive().required(),
+  walletType: Joi.string().valid('asset').default('asset'),
+  userId: Joi.string().required(),
+  userWalletAddress: Joi.alternatives().try(
+    Joi.string().pattern(EVM_ADDRESS).messages({ 'string.pattern.base': 'Invalid EVM wallet address' }),
+    Joi.string().pattern(SOLANA_ADDRESS).messages({ 'string.pattern.base': 'Invalid Solana wallet address' }),
+    Joi.string().pattern(TRON_ADDRESS).messages({ 'string.pattern.base': 'Invalid TRON wallet address' }),
+  ).required(),
+  chain: Joi.string().valid('ethereum', 'solana', 'tron').required(),
+  requestedToken: Joi.string().valid('USDT').default('USDT'),
+  requestedAmount: Joi.number().positive().max(5000).required(),
+};
+
+export const fiatReserveSchema = Joi.object(fiatDepositBaseSchema);
+
+export const fiatExecuteSchema = Joi.object(fiatDepositBaseSchema);
+
+export const fiatCancelSchema = Joi.object({
+  externalReference: Joi.string().pattern(/^WS-DEP-[A-Za-z0-9-]+$/).required(),
+  reason: Joi.string().max(500).optional(),
 });
 
 export const createWithdrawalSchema = Joi.object({
